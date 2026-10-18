@@ -1330,7 +1330,7 @@ function handleFinalResults(t) {
     }
   });
   e.final_overall_results.forEach(
-    (f) => (f.electoral_votes += e.extraEVs[f.candidate]),
+    (f) => (f.electoral_votes += e.extraEVs[f.candidate] ?? 0),
   );
   e.final_overall_results.sort((a, b) => {
     if (b.electoral_votes !== a.electoral_votes) {
