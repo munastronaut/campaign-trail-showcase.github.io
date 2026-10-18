@@ -2592,7 +2592,7 @@ function getLatestRes(t) {
       //  if (runnerUpPk) evAllocation.set(runnerUpPk, runnerUpEVs);
       //}
       for (const res of state.result) {
-        console.log(`${res.candidate}: ${res.electoral_votes}`);
+        debugConsole(`${res.candidate}: ${res.electoral_votes}`);
       }
     }
 
@@ -3957,6 +3957,7 @@ function T(t) {
 
 /**
  * @typedef {Object} Context
+ * @propert {number[]} cands
  * @property {StateResult[]} stateResults
  * @property {Map<any, StateFields>} stateFields
  */
@@ -4411,8 +4412,11 @@ function A(
     f.result.sort((a, b) => b.percent - a.percent);
   });
 
+  debugConsole('MATCHUP: ', matchup);
+
   /** @type {Context} */
   const ctx = {
+    cands: matchup,
     stateResults: calcStatePolls,
     stateFields: stateFieldsByPk,
   };
