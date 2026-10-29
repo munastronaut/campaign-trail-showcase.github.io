@@ -1220,12 +1220,13 @@ function handleFinalResults(t) {
           if (h.candidate === g.candidate) {
             const i = h;
             i.popular_votes += g.votes;
-            i.electoral_votes += g.electoral_votes;
+            i.electoral_votes += g.electoral_votes ?? 0;
           }
         });
       });
     }
   });
+  e.final_overall_results.forEach((f) => (f.electoral_votes += e.extraEVs?.[f.candidate] ?? 0));
   e.final_overall_results.sort((a, b) => {
     if (b.electoral_votes !== a.electoral_votes) {
       return b.electoral_votes - a.electoral_votes;
@@ -1928,41 +1929,10 @@ function descHTML(descWindow, id) {
   );
 }
 
-function a(e) {
-  let t;
-  // eslint-disable-next-line default-case
-  switch (e) {
-    case "1":
-      t = `
-        <p><strong>Use the default method of allocating electoral votes for each state.</strong></p>
-        <p>In the vast majority of cases, states use a winner-take-all method. For instance, if Candidate A defeats Candidate B in a state, worth 20 electoral votes, Candidate A will usually win all 20 votes.</p>
-        <p>This method tends to concentrate the election into a handful of swing states. It also makes it difficult for third-party candidates to win electoral votes. On the other hand, it is easier for a single candidate to gain an overall majority of the electoral votes.</p>
-      `;
-      break;
-    case "2":
-      t = `
-        <p><strong>Allocate each state's electoral votes proportionally.</strong></p>
-        <p>Under this method, all candidates split the electoral votes in a state, in proportion to their popular vote %.</p>
-        <p>There is still an advantage to winning a state -- the winner of the state will always receive a plurality of electoral votes. For instance, in a state with 4 electoral votes, if Candidate A wins 51% of the vote, they will be awarded 3 electoral votes.</p>
-        <p>Compared to a winner-take-all method, this method aligns the electoral vote more closely with the popular vote. It also makes it easier to third party candidates to increase their electoral vote totals. In some scenarios, this effect is highly significant on the final outcome. Some examples are 1860, 1948, 1968, and 2000. </p>
-      `;
-      break;
-    case "3":
-      t = `
-        <p><strong style='color:navy'>From sea to shining sea!</strong> - <em>The "advanced mode" Campaign Trail experience.</em></p>
-        <p>You will play with significantly increased control over the financial and internal aspects of your campaign, including:</p>
-        <p>
-        - Campaign finance<br>
-        - Staffing your campaign<br>
-        - Interactions with lobbies<br>
-        - Ad buys
-        </p>
-        <p><b>This is not the recommended experience for new players.</b></p>
-        <p><b>Originally from New Campaign Trail, added with permission.</b></p>
-      `;
-      break;
-  }
-  $("#opponent_selection_description_window").html(t);
+function gameTypeDisplay(el) {
+  $('#opponent_selection_description_window').html(
+    e.game_types.find((ty) => ty.id === Number(el)).desc,
+  );
 }
 
 // checks if we are actually looking at a real candidate pairing
@@ -2162,11 +2132,19 @@ function renderOptions(electionId, candId, runId) {
     const isSelected = difficulty.fields.name === 'Normal' ? 'selected' : '';
     difficultyStr += `<option value="${difficulty.pk}" ${isSelected}>${difficulty.fields.name}</option>`;
   });
-  let shining = "";
-  if (e.shining) {
-    shining = `<option value=3 style="">Sea to Shining Sea</option>`;
-  }
-  document.querySelector("#game_window").innerHTML = `
+  const gameTypes = e.game_types
+    .toSorted((a, b) => {
+      if (e.default_game_type === a.id) return -1;
+      if (e.default_game_type === b.id) return 1;
+      return a.id - b.id;
+    })
+    .map((ty) =>
+      ((e.shining && ty.id === 3) || ty.id !== 3) && ty.active
+        ? `<option value="${ty.id}">${e.default_game_type === ty.id ? `Default (${ty.name})` : ty.name}</option>`
+        : '',
+    )
+    .join('');
+  document.querySelector('#game_window').innerHTML = `
     <div class="game_header">${window.corrr}</div>
     <div class="inner_window_w_desc" id="inner_window_4">
       <div id="game_options">
@@ -2174,9 +2152,7 @@ function renderOptions(electionId, candId, runId) {
           <p>
             <h3>Select your game mode.</h3>
             <select name="game_type_id" id="game_type_id">
-              <option value="1">Default (Winner-Take-All)</option>
-              <option value="2">Proportional</option>
-              ${shining}
+            ${gameTypes}
             </select>
           </p>
         </form>
@@ -2196,11 +2172,11 @@ function renderOptions(electionId, candId, runId) {
       </p>
     </div>
   `.trim();
-  const gameTypeId = document.querySelector("#game_type_id");
-  const difficultyLevelId = document.querySelector("#difficulty_level_id");
-  a(gameTypeId.value);
-  gameTypeId.addEventListener("change", () => {
-    a(gameTypeId.value);
+  const gameTypeId = document.querySelector('#game_type_id');
+  const difficultyLevelId = document.querySelector('#difficulty_level_id');
+  gameTypeDisplay(gameTypeId.value);
+  gameTypeId.addEventListener('change', () => {
+    gameTypeDisplay(gameTypeId.value);
   });
   // if (e.shining) $("#game_type_id").val("3");
   $('#opponent_selection_id_button').click(() => {
@@ -2427,25 +2403,9 @@ function getLatestRes(t) {
         });
       }
     } else if (!e.primary) {
-      const gameType = Number(e.game_type_id);
-      if (gameType === 2) { // Proportional
-        const percentages = state.result.map(r => r.percent);
-        const allocations = divideElectoralVotesProp(percentages, stateElectoralVotes);
-        state.result.forEach((res, i) => {
-          evAllocation.set(res.candidate, allocations[i] || 0);
-        });
-      } else if (stateFields.winner_take_all_flg === 1) {
-        const winnerPk = state.result[0]?.candidate;
-        if (winnerPk) evAllocation.set(winnerPk, stateElectoralVotes);
-      } else {
-        const totalVotes = state.result.reduce((sum, cr) => sum + (cr.votes || 0), 0);
-        const topVotes = state.result[0]?.votes || 0;
-        const [winnerEVs, runnerUpEVs] = splitEVTopTwo(stateElectoralVotes, topVotes, totalVotes);
-
-        const winnerPk = state.result[0]?.candidate;
-        const runnerUpPk = state.result[1]?.candidate;
-        if (winnerPk) evAllocation.set(winnerPk, winnerEVs);
-        if (runnerUpPk) evAllocation.set(runnerUpPk, runnerUpEVs);
+      for (const res of state.result) {
+        evAllocation.set(res?.candidate, res.electoral_votes);
+        debugConsole(`${res.candidate}: ${res.electoral_votes}`);
       }
     }
 
@@ -2464,8 +2424,8 @@ function getLatestRes(t) {
   const finalCandidates = activeCandidates.map((candidate) => {
     const totals = candidateTotals.get(candidate.pk) || { popvs: 0, evvs: 0 };
     candidate.popvs = totals.popvs;
-    candidate.evvs = totals.evvs;
-    candidate.pvp = total_v > 0 ? (totals.popvs / total_v) : 0;
+    candidate.evvs = totals.evvs + (e.extraEVs[candidate.pk] ?? 0);
+    candidate.pvp = total_v > 0 ? totals.popvs / total_v : 0;
     return candidate;
   });
 
@@ -2988,6 +2948,28 @@ function m() {
   overallResultsHtml();
 }
 
+const OUTCOME = Object.freeze({
+  WIN: 1,
+  LOSS: 2,
+  TIE: 3,
+});
+
+/** @returns {1|2|3} */
+function outcome(overallRes, winningNum) {
+  const first = overallRes[0];
+  const second = overallRes[1];
+  const gameType = Number(e.game_type_id);
+  if (first.candidate === e.candidate_id) {
+    if (gameType === 0 && first.popular_votes > second.popular_votes) return OUTCOME.WIN;
+    if (first.electoral_votes >= winningNum) return OUTCOME.WIN;
+  }
+
+  if (gameType === 0 && first.popular_votes > second.popular_votes) return OUTCOME.LOSS;
+  if (first.electoral_votes >= winningNum) return OUTCOME.LOSS;
+
+  return OUTCOME.TIE;
+}
+
 function overallResultsHtml() {
   const cands = PROPS.CANDIDATES;
   const candObj = cands.get(String(e.candidate_id));
@@ -2995,12 +2977,11 @@ function overallResultsHtml() {
   const overallResults = e.final_overall_results;
   const winningNum = electJson.winning_electoral_vote_number;
   let s = '';
-  if (overallResults[0].candidate === e.candidate_id
-    && overallResults[0].electoral_votes >= winningNum) {
+  const out = outcome(overallResults, winningNum);
+  if (out === OUTCOME.WIN) {
     s = candObj.electoral_victory_message;
     e.final_outcome = 'win';
-    e.final_outcome = "win";
-  } else if (overallResults[0].electoral_votes >= winningNum) {
+  } else if (out === OUTCOME.LOSS) {
     s = candObj.electoral_loss_message;
     e.final_outcome = 'loss';
   } else {
@@ -3008,9 +2989,8 @@ function overallResultsHtml() {
     e.final_outcome = 'tie';
   }
   const n = cands.get(String(overallResults[0].candidate));
-  const l = (overallResults[0].electoral_votes >= winningNum && n?.image_url)
-    ? n.image_url
-    : electJson.no_electoral_majority_image;
+  const l =
+    out !== OUTCOME.TIE && n?.image_url ? n.image_url : electJson.no_electoral_majority_message;
   const totalPV = e.final_overall_results.reduce((sum, f) => sum + f.popular_votes, 0);
 
   if (important_info.indexOf('<html>') === -1 && important_info !== '') {
@@ -3699,6 +3679,17 @@ function T(t) {
 }
 
 /**
+ * @typedef {Object} StateFields
+ * @property {string} name
+ * @property {string} abbr
+ * @property {number} electoral_votes
+ * @property {number} popular_votes
+ * @property {number} poll_closing_time
+ * @property {number} winner_take_all_flg
+ * @property {any} election
+ */
+
+/**
  * Object used to represent the results of a candidate in a state
  * @typedef {Object} CandResult
  * @property {number} candidate - The unique ID of the candidate
@@ -3715,6 +3706,157 @@ function T(t) {
  * @property {CandResult[]} result - Results of each candidate in the given state
  * @property {string} abbr - Abbreviation of the state's name, used for quick lookups
  */
+
+/**
+ * @typedef {Object} Context
+ * @property {number[]} cands
+ * @property {StateResult[]} stateResults
+ * @property {Map<any, StateFields>} stateFields
+ */
+
+/**
+ * @template [T=Object]
+ * @callback ElectoralMethod
+ * @param {Context} ctx
+ * @param {T} config
+ */
+
+const METHODS = {
+  /** @type {ElectoralMethod<void>} */
+  pop(ctx, _1) {
+    const { stateFields } = ctx;
+    for (const fields of stateFields.values()) {
+      fields.electoral_votes = 0;
+    }
+  },
+
+  /** @type {ElectoralMethod<void>} */
+  wta(ctx, _) {
+    const { stateResults, stateFields } = ctx;
+    for (const stateResult of stateResults) {
+      const sf = stateFields.get(stateResult.state);
+      const res = stateResult.result;
+      if (sf?.winner_take_all_flg) {
+        res.forEach((g, idx) => (g.electoral_votes = idx === 0 ? sf.electoral_votes : 0));
+      } else {
+        const total = res.reduce((acc, g) => acc + g.votes, 0);
+        const [high, low] = splitEVTopTwo(sf.electoral_votes, res[0].votes, total);
+        res.forEach((g, idx) => {
+          if (idx === 0) g.electoral_votes = high;
+          else if (idx === 1) g.electoral_votes = low;
+          else g.electoral_votes = 0;
+        });
+      }
+    }
+  },
+
+  prop(ctx, _) {
+    const { stateResults, stateFields } = ctx;
+    for (const stateResult of stateResults) {
+      const res = stateResult.result;
+      const sf = stateFields.get(stateResult.state);
+
+      const ratios = res.map((g) => g.percent);
+      const computed = divideElectoralVotesProp(ratios, sf.electoral_votes);
+      res.forEach((g, idx) => (g.electoral_votes = computed[idx]));
+    }
+  },
+};
+
+e.default_game_type = 1;
+
+/**
+ * @typedef {Object} GameType
+ * @property {number} id
+ * @property {string} name
+ * @property {string} desc
+ * @property {boolean} active
+ * @property {ElectoralMethod} fn
+ * @property {Object?} config
+ */
+
+// IDs in [0, 3] are reserved. That means the game assigns special meanings to them:
+//   0: Direct popular     - zeroes out all EVs
+//   1: Winner-take-all    - default
+//   2: Proportional       - assigns EVs proportionally
+//   3: Sea to Shining Sea - WTA but with fancy stuff
+//
+// Consequently, if you're removing certain methods and such, you must use new IDs for new methods.
+// If you're simulating a direct popular election, you can remove every other method except for the
+// 'Direct' method with ID 0.
+//
+// However, you are free to change their names, descriptions, and whether they're active or not.
+/** @type {GameType[]} */
+e.game_types = [
+  { id: 0, name: 'Direct', desc: '', active: false, fn: METHODS.pop },
+  {
+    id: 1,
+    name: 'Winner-Take-All',
+    desc: `
+      <p><strong>Use the default method of allocating electoral votes for each state.</strong></p>
+      <p>
+        In the vast majority of cases, states use a winner-take-all method. For instance, if
+        Candidate A defeats Candidate B in a state, worth 20 electoral votes, Candidate A will
+        usually win all 20 votes.
+      </p>
+      <p>
+        This method tends to concentrate the election into a handful of swing states. It also
+        makes it difficult for third-party candidates to win electoral votes. On the other hand,
+        it is easier for a single candidate to gain an overall majority of the electoral votes.
+      </p>
+    `,
+    active: true,
+    fn: METHODS.wta,
+  },
+  {
+    id: 2,
+    name: 'Proportional',
+    desc: `
+      <p><strong>Allocate each state's electoral votes proportionally.</strong></p>
+      <p>
+        Under this method, all candidates split the electoral votes in a state, in proportion to
+        their popular vote %.
+      </p>
+      <p>
+        There is still an advantage to winning a state -- the winner of the state will always
+        receive a plurality of electoral votes. For instance, in a state with 4 electoral votes,
+        if Candidate A wins 51% of the vote, they will be awarded 3 electoral votes.
+      </p>
+      <p>
+        Compared to a winner-take-all method, this method aligns the electoral vote more closely
+        with the popular vote. It also makes it easier to third party candidates to increase their
+        electoral vote totals. In some scenarios, this effect is highly significant on the final
+        outcome. Some examples are 1860, 1948, 1968, and 2000.
+      </p>
+    `,
+    active: true,
+    fn: METHODS.prop,
+  },
+  {
+    id: 3,
+    name: 'Sea to Shining Sea',
+    desc: `
+      <p>
+        <strong style='color:navy'>From sea to shining sea!</strong> -
+        <em>The "advanced mode" Campaign Trail experience.</em>
+      </p>
+      <p>
+        You will play with significantly increased control over the financial and internal
+        aspects of your campaign, including:
+      </p>
+      <p>
+      - Campaign finance<br>
+      - Staffing your campaign<br>
+      - Interactions with lobbies<br>
+      - Ad buys
+      </p>
+      <p><b>This is not the recommended experience for new players.</b></p>
+      <p><b>Originally from New Campaign Trail, added with permission.</b></p>
+    `,
+    active: true,
+    fn: METHODS.wta,
+  },
+];
 
 // If only JavaScript had enums then we could use it for `t`... ughh :confounded:
 // Also, we should modularize this function sometime! It's a bit too monolithic right now
@@ -4036,30 +4178,20 @@ function A(t, matchup = e.matchup ?? [...new Set([e.candidate_id, ...e.opponents
     f.result.sort((a, b) => b.percent - a.percent);
   });
 
-    if ([1, 3].includes(gameType)) {
-      if (sf?.winner_take_all_flg === 1) {
-        f.result.forEach((g, idx) => {
-          g.electoral_votes = idx === 0 ? O : 0;
-        });
-      } else {
-        const H = f.result.reduce((acc, g) => acc + g.votes, 0);
-        const [L, D] = splitEVTopTwo(O, f.result[0].votes, H);
-        f.result.forEach((g, idx) => {
-          if (idx === 0) g.electoral_votes = L;
-          else if (idx === 1) g.electoral_votes = D;
-          else g.electoral_votes = 0;
-        });
-      }
-    }
+  debugConsole('MATCHUP: ', matchup);
 
-    if (gameType === 2) {
-      const V = f.result.map((g) => g.percent);
-      const q = divideElectoralVotesProp(V, O);
-      f.result.forEach((g, idx) => {
-        g.electoral_votes = q[idx];
-      });
-    }
-  });
+  /** @type {Context} */
+  const ctx = {
+    cands: matchup,
+    stateResults: calcStatePolls,
+    stateFields: stateFieldsByPk,
+  };
+
+  const ty = e.game_types.find((ty) => gameType === ty.id);
+  const fn = ty.fn ?? wta;
+  const config = ty.config ?? {};
+
+  fn(ctx, config);
 
   if (e.primary_states) {
     const primaryStates = JSON.parse(e.primary_states);
