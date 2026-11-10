@@ -625,7 +625,7 @@ $('#submitMod').click(() => {
       moddercheckeror = true;
     }
   } else {
-    evalFromUrl(`../static/mods/${$("#modSelect")[0].value}_init.js`);
+    evalFromUrl(`../static/mods/${$('#modSelect')[0].value}_init.js`);
     diff_mod = true;
   }
   $('#modloaddiv')[0].style.display = 'none';
@@ -3763,7 +3763,14 @@ const METHODS = {
   },
 };
 
-e.default_game_type = 1;
+const RESERVED_GAME_TYPES = Object.freeze({
+  POP: 0,
+  WTA: 1,
+  PROP: 2,
+  STSS: 3,
+});
+
+e.default_game_type = RESERVED_GAME_TYPES.WTA;
 
 /**
  * @typedef {Object} GameType
@@ -3782,15 +3789,15 @@ e.default_game_type = 1;
 //   3: Sea to Shining Sea - WTA but with fancy stuff
 //
 // Consequently, if you're removing certain methods and such, you must use new IDs for new methods.
-// If you're simulating a direct popular election, you can remove every other method except for the
-// 'Direct' method with ID 0.
+//   If you're simulating a direct popular election, you can remove every other method except for
+//   the 'Direct' method with ID 0.
 //
 // However, you are free to change their names, descriptions, and whether they're active or not.
 /** @type {GameType[]} */
 e.game_types = [
-  { id: 0, name: 'Direct', desc: '', active: false, fn: METHODS.pop },
+  { id: RESERVED_GAME_TYPES.POP, name: 'Direct', desc: '', active: false, fn: METHODS.pop },
   {
-    id: 1,
+    id: RESERVED_GAME_TYPES.WTA,
     name: 'Winner-Take-All',
     desc: `
       <p><strong>Use the default method of allocating electoral votes for each state.</strong></p>
@@ -3809,7 +3816,7 @@ e.game_types = [
     fn: METHODS.wta,
   },
   {
-    id: 2,
+    id: RESERVED_GAME_TYPES.PROP,
     name: 'Proportional',
     desc: `
       <p><strong>Allocate each state's electoral votes proportionally.</strong></p>
@@ -3833,7 +3840,7 @@ e.game_types = [
     fn: METHODS.prop,
   },
   {
-    id: 3,
+    id: RESERVED_GAME_TYPES.STSS,
     name: 'Sea to Shining Sea',
     desc: `
       <p>
