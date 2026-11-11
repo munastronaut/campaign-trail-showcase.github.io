@@ -3796,16 +3796,17 @@ const METHODS = {
       const seats = stateFields.get(state).electoral_votes;
       if (seats <= 0) continue;
       const votes = result.reduce((acc, res) => acc + res.votes, 0);
+      if (votes <= 0) continue;
       const quota = votes / seats;
       const remainders = [];
       let assigned = 0;
       for (let i = 0; i < result.length; ++i) {
-        const seats = Math.floor(result[i].votes / quota);
-        result[i].electoral_votes = seats;
-        assigned += seats;
+        const entitled = Math.floor(result[i].votes / quota);
+        result[i].electoral_votes = entitled;
+        assigned += entitled;
 
-        const remainder = result[i].votes - Math.floor(seats);
-        remainders.push({ i, remainder });
+        const remainder = result[i].votes / quota - entitled;
+        remainders.push({ i, r: remainder });
       }
 
       remainders.sort((a, b) => b.r - a.r || a.i - b.i);
