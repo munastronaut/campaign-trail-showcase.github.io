@@ -1288,7 +1288,7 @@ function questionHTML() {
     </div>
   `.trim();
   const shining_button =
-    Number(e.game_type_id) === 3
+    Number(e.game_type_id) === RESERVED_GAME_TYPES.STSS
       ? '<button id="shining_menu_button" class="answer_select_button" style="color:navy;font-weight:bolder;margin-left:1.5em;">The Campaign</button>'
       : '';
   const z = `
@@ -1336,7 +1336,7 @@ function questionHTML() {
       openMap(A(2));
     });
 
-  if (Number(e.game_type_id) === 3) {
+  if (Number(e.game_type_id) === RESERVED_GAME_TYPES.STSS) {
     $('#shining_menu_button')
       .off('click')
       .on('click', (evt) => {
@@ -1744,7 +1744,7 @@ function electionNight(type = 'general', timestep = 10, states = []) {
 function nextQuestion() {
   // calculate shining
 
-  if (Number(e.game_type_id) === 3) {
+  if (Number(e.game_type_id) === RESERVED_GAME_TYPES.STSS) {
     const temp_polls = A(2);
     shining_cal(temp_polls);
   }
@@ -2139,7 +2139,8 @@ function renderOptions(electionId, candId, runId) {
       return a.id - b.id;
     })
     .map((ty) =>
-      ((e.shining && ty.id === 3) || ty.id !== 3) && ty.active
+      ((e.shining && ty.id === RESERVED_GAME_TYPES.STSS) || ty.id !== RESERVED_GAME_TYPES.STSS) &&
+      ty.active
         ? `<option value="${ty.id}">${e.default_game_type === ty.id ? `Default (${ty.name})` : ty.name}</option>`
         : '',
     )
@@ -3723,7 +3724,7 @@ function T(t) {
 
 const METHODS = {
   /** @type {ElectoralMethod<void>} */
-  pop(ctx, _1) {
+  pop(ctx, _) {
     const { stateFields } = ctx;
     for (const fields of stateFields.values()) {
       fields.electoral_votes = 0;
@@ -4195,7 +4196,7 @@ function A(t, matchup = e.matchup ?? [...new Set([e.candidate_id, ...e.opponents
   };
 
   const ty = e.game_types.find((ty) => gameType === ty.id);
-  const fn = ty.fn ?? wta;
+  const fn = ty.fn ?? METHODS.wta;
   const config = ty.config ?? {};
 
   fn(ctx, config);
