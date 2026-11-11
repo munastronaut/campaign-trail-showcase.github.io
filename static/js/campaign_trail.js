@@ -3762,6 +3762,62 @@ const METHODS = {
       res.forEach((g, idx) => (g.electoral_votes = computed[idx]));
     }
   },
+
+  // taken from 2012 - LBM, slightly modified
+  sainteLague(ctx) {
+    const { stateResults, stateFields } = ctx;
+    for (const stateResult of stateResults) {
+      const { state, result } = stateResult;
+      const seats = stateFields.get(state).electoral_votes;
+      if (seats <= 0) continue;
+      const alloc = Array(result.length).fill(0);
+      for (let s = 0; s < seats; ++s) {
+        let best = -1,
+          bestScore = -Infinity;
+        for (let i = 0; i < result.length; ++i) {
+          const score = result[i].votes / (2 * alloc[i] + 1);
+          if (score > bestScore) {
+            bestScore = score;
+            best = i;
+          }
+        }
+        ++alloc[best];
+      }
+      for (let i = 0; i < result.length; ++i) {
+        result[i].electoral_votes = alloc[i];
+      }
+    }
+  },
+
+  hareNiemeyer(ctx) {
+    const { stateResults, stateFields } = ctx;
+    for (const stateResult of stateResults) {
+      const { state, result } = stateResult;
+      const seats = stateFields.get(state).electoral_votes;
+      if (seats <= 0) continue;
+      const votes = result.reduce((acc, res) => acc + res.votes, 0);
+      const quota = votes / seats;
+      const remainders = [];
+      let assigned = 0;
+      for (let i = 0; i < result.length; ++i) {
+        const seats = Math.floor(result[i].votes / quota);
+        result[i].electoral_votes = seats;
+        assigned += seats;
+
+        const remainder = result[i].votes - Math.floor(seats);
+        remainders.push({ i, remainder });
+      }
+
+      remainders.sort((a, b) => b.r - a.r || a.i - b.i);
+
+      let idx = 0;
+      while (assigned < seats) {
+        ++result[remainders[idx % result.length].i].electoral_votes;
+        ++assigned;
+        ++idx;
+      }
+    }
+  },
 };
 
 const RESERVED_GAME_TYPES = Object.freeze({
@@ -3783,6 +3839,8 @@ e.default_game_type = RESERVED_GAME_TYPES.WTA;
  * @property {Object?} config
  */
 
+let currId = Object.values(RESERVED_GAME_TYPES).at(-1) + 1;
+
 // IDs in [0, 3] are reserved. That means the game assigns special meanings to them:
 //   0: Direct popular     - zeroes out all EVs
 //   1: Winner-take-all    - default
@@ -3798,7 +3856,7 @@ e.default_game_type = RESERVED_GAME_TYPES.WTA;
 e.game_types = [
   // This is slightly hacky: upon every invocation of A(), the callback loops through each state
   //   field and sets its EVs to 0.
-  { id: RESERVED_GAME_TYPES.POP, name: 'Direct', desc: '', active: false, fn: METHODS.pop },
+  { id: RESERVED_GAME_TYPES.POP, name: 'Direct', desc: '', active: true, fn: METHODS.pop },
   {
     id: RESERVED_GAME_TYPES.WTA,
     name: 'Winner-Take-All',
@@ -3866,6 +3924,8 @@ e.game_types = [
     active: true,
     fn: METHODS.wta,
   },
+  { id: currId++, name: 'Sainte-Laguë', desc: '', active: true, fn: METHODS.sainteLague },
+  { id: currId++, name: 'Hare-Niemeyer', desc: '', active: true, fn: METHODS.hareNiemeyer },
 ];
 
 // If only JavaScript had enums then we could use it for `t`... ughh :confounded:
