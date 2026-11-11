@@ -3796,6 +3796,8 @@ e.default_game_type = RESERVED_GAME_TYPES.WTA;
 // However, you are free to change their names, descriptions, and whether they're active or not.
 /** @type {GameType[]} */
 e.game_types = [
+  // This is slightly hacky: upon every invocation of A(), the callback loops through each state
+  //   field and sets its EVs to 0.
   { id: RESERVED_GAME_TYPES.POP, name: 'Direct', desc: '', active: false, fn: METHODS.pop },
   {
     id: RESERVED_GAME_TYPES.WTA,
