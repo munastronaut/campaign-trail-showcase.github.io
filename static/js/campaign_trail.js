@@ -3724,7 +3724,7 @@ function T(t) {
 
 const METHODS = {
   /** @type {ElectoralMethod<void>} */
-  pop(ctx, _) {
+  pop(ctx) {
     const { stateFields } = ctx;
     for (const fields of stateFields.values()) {
       fields.electoral_votes = 0;
@@ -3732,7 +3732,7 @@ const METHODS = {
   },
 
   /** @type {ElectoralMethod<void>} */
-  wta(ctx, _) {
+  wta(ctx) {
     const { stateResults, stateFields } = ctx;
     for (const stateResult of stateResults) {
       const sf = stateFields.get(stateResult.state);
@@ -3751,7 +3751,7 @@ const METHODS = {
     }
   },
 
-  prop(ctx, _) {
+  prop(ctx) {
     const { stateResults, stateFields } = ctx;
     for (const stateResult of stateResults) {
       const res = stateResult.result;
