@@ -3722,6 +3722,77 @@ function T(t) {
  * @param {T} config
  */
 
+// taken from 2012 - LBM, slightly modified
+function highestAverages(ctx, quotient) {
+  const { stateResults, stateFields } = ctx;
+  for (const stateResult of stateResults) {
+    const { state, result } = stateResult;
+    const seats = stateFields.get(state).electoral_votes;
+    if (seats <= 0) continue;
+    const alloc = Array(result.length).fill(0);
+    for (let s = 0; s < seats; ++s) {
+      let best = -1,
+        bestScore = -Infinity;
+      for (let i = 0; i < result.length; ++i) {
+        //const score = result[i].votes / (2 * alloc[i] + 1);
+        const score = quotient(result[i].votes, alloc[i]);
+        if (score > bestScore) {
+          bestScore = score;
+          best = i;
+        }
+      }
+      ++alloc[best];
+    }
+    for (let i = 0; i < result.length; ++i) {
+      result[i].electoral_votes = alloc[i];
+    }
+  }
+}
+
+function largestRemainder(ctx, quotaCb, capped = true) {
+  const { stateResults, stateFields } = ctx;
+  for (const stateResult of stateResults) {
+    const { state, result } = stateResult;
+    const seats = stateFields.get(state).electoral_votes;
+    if (seats <= 0) continue;
+    const votes = result.reduce((acc, res) => acc + res.votes, 0);
+    if (votes <= 0) continue;
+    const quota = quotaCb(votes, seats);
+    const remainders = [];
+    let assigned = 0;
+    for (let i = 0; i < result.length; ++i) {
+      const entitlement = result[i].votes / quota;
+      const entitled = Math.floor(entitlement);
+      result[i].electoral_votes = entitled;
+      assigned += entitled;
+
+      const remainder = entitlement - entitled;
+      remainders.push({ i, r: remainder });
+    }
+
+    remainders.sort((a, b) => b.r - a.r || a.i - b.i);
+
+    if (assigned < seats) {
+      let idx = 0;
+      while (assigned < seats) {
+        ++result[remainders[idx % result.length].i].electoral_votes;
+        ++assigned;
+        ++idx;
+      }
+    } else if (capped && assigned > seats) {
+      let idx = remainders.length - 1;
+      while (assigned > seats) {
+        const tgt = result[remainders[idx].i];
+        if (tgt.electoral_votes > 0) {
+          --tgt.electoral_votes;
+          --assigned;
+        }
+        idx = (idx + result.length - 1) % result.length;
+      }
+    }
+  }
+}
+
 const METHODS = {
   /** @type {ElectoralMethod<void>} */
   pop(ctx) {
@@ -3763,61 +3834,28 @@ const METHODS = {
     }
   },
 
-  // taken from 2012 - LBM, slightly modified
+  dHondt(ctx) {
+    highestAverages(ctx, (v, c) => v / (c + 1));
+  },
+
   sainteLague(ctx) {
-    const { stateResults, stateFields } = ctx;
-    for (const stateResult of stateResults) {
-      const { state, result } = stateResult;
-      const seats = stateFields.get(state).electoral_votes;
-      if (seats <= 0) continue;
-      const alloc = Array(result.length).fill(0);
-      for (let s = 0; s < seats; ++s) {
-        let best = -1,
-          bestScore = -Infinity;
-        for (let i = 0; i < result.length; ++i) {
-          const score = result[i].votes / (2 * alloc[i] + 1);
-          if (score > bestScore) {
-            bestScore = score;
-            best = i;
-          }
-        }
-        ++alloc[best];
-      }
-      for (let i = 0; i < result.length; ++i) {
-        result[i].electoral_votes = alloc[i];
-      }
-    }
+    highestAverages(ctx, (v, c) => v / (2 * c + 1));
+  },
+
+  huntingtonHill(ctx) {
+    highestAverages(ctx, (v, c) => v / Math.sqrt((c + 1) * (c + 2)));
   },
 
   hareNiemeyer(ctx) {
-    const { stateResults, stateFields } = ctx;
-    for (const stateResult of stateResults) {
-      const { state, result } = stateResult;
-      const seats = stateFields.get(state).electoral_votes;
-      if (seats <= 0) continue;
-      const votes = result.reduce((acc, res) => acc + res.votes, 0);
-      if (votes <= 0) continue;
-      const quota = votes / seats;
-      const remainders = [];
-      let assigned = 0;
-      for (let i = 0; i < result.length; ++i) {
-        const entitled = Math.floor(result[i].votes / quota);
-        result[i].electoral_votes = entitled;
-        assigned += entitled;
+    largestRemainder(ctx, (v, s) => v / s);
+  },
 
-        const remainder = result[i].votes / quota - entitled;
-        remainders.push({ i, r: remainder });
-      }
+  hagenbachBischoff(ctx) {
+    largestRemainder(ctx, (v, s) => v / (s + 1));
+  },
 
-      remainders.sort((a, b) => b.r - a.r || a.i - b.i);
-
-      let idx = 0;
-      while (assigned < seats) {
-        ++result[remainders[idx % result.length].i].electoral_votes;
-        ++assigned;
-        ++idx;
-      }
-    }
+  imperiali(ctx) {
+    largestRemainder(ctx, (v, s) => v / (s + 2));
   },
 };
 
@@ -3857,7 +3895,19 @@ let currId = Object.values(RESERVED_GAME_TYPES).at(-1) + 1;
 e.game_types = [
   // This is slightly hacky: upon every invocation of A(), the callback loops through each state
   //   field and sets its EVs to 0.
-  { id: RESERVED_GAME_TYPES.POP, name: 'Direct', desc: '', active: true, fn: METHODS.pop },
+  {
+    id: RESERVED_GAME_TYPES.POP,
+    name: 'Direct',
+    desc: `
+      <p><strong>Do not use an apportionment method at all.</strong></p>
+      <p>
+        This method elects candidates directly: the candidate with a plurality
+        of the popular vote wins.
+      </p>
+  `,
+    active: true,
+    fn: METHODS.pop,
+  },
   {
     id: RESERVED_GAME_TYPES.WTA,
     name: 'Winner-Take-All',
@@ -3925,8 +3975,156 @@ e.game_types = [
     active: true,
     fn: METHODS.wta,
   },
-  { id: currId++, name: 'Sainte-Laguë', desc: '', active: true, fn: METHODS.sainteLague },
-  { id: currId++, name: 'Hare-Niemeyer', desc: '', active: true, fn: METHODS.hareNiemeyer },
+  {
+    id: currId++,
+    name: "D'Hondt",
+    desc: `
+      <p><strong>Highest averages method (D'Hondt)</strong></p>
+      <p>
+        Uses the quotient:
+        <math display="block" class="tml-display" style="display:block math;">
+          <mfrac>
+            <mtext>total votes</mtext>
+            <mrow>
+              <mtext>current seats</mtext>
+              <mo>+</mo>
+              <mn>1</mn>
+            </mrow>
+          </mfrac>
+        </math>
+      </p>
+    `,
+    active: true,
+    fn: METHODS.dHondt,
+  },
+  {
+    id: currId++,
+    name: 'Sainte-Laguë',
+    desc: `
+      <p><strong>Highest averages method (Sainte-Laguë)</strong></p>
+      <p>
+        Uses the quotient:
+        <math display="block" class="tml-display" style="display:block math;">
+          <mfrac>
+            <mtext>total votes</mtext>
+            <mrow>
+              <mn>2</mn>
+              <mrow>
+                <mo fence="true" form="prefix" stretchy="false">(</mo>
+                <mtext>current seats</mtext>
+                <mo fence="true" form="postfix" stretchy="false">)</mo>
+              </mrow>
+              <mo>+</mo>
+              <mn>1</mn>
+            </mrow>
+          </mfrac>
+        </math>
+      </p>
+    `,
+    active: true,
+    fn: METHODS.sainteLague,
+  },
+  {
+    id: currId++,
+    name: 'Huntington-Hill',
+    desc: `
+      <p><strong>Highest averages method (Huntington–Hill)</strong></p>
+      <p>
+        Compared to the other highest averages methods, this uses a more
+        complex quotient:
+        <math display="block" class="tml-display" style="display:block math;">
+          <mfrac>
+            <mtext>total votes</mtext>
+            <msqrt>
+              <mrow>
+                <mrow>
+                  <mo fence="true" form="prefix" stretchy="false">(</mo>
+                  <mtext>current seats</mtext>
+                  <mo>+</mo>
+                  <mn>1</mn>
+                  <mo fence="true" form="postfix" stretchy="false">)</mo>
+                </mrow>
+                <mrow>
+                  <mo fence="true" form="prefix" stretchy="false">(</mo>
+                  <mtext>current seats</mtext>
+                  <mo>+</mo>
+                  <mn>2</mn>
+                  <mo fence="true" form="postfix" stretchy="false">)</mo>
+                </mrow>
+              </mrow>
+            </msqrt>
+          </mfrac>
+        </math>
+      </p>
+    `,
+    active: true,
+    fn: METHODS.huntingtonHill,
+  },
+  {
+    id: currId++,
+    name: 'Hare-Niemeyer',
+    desc: `
+      <p><strong>Largest remainder method (Hare quota)</strong></p>
+      <p>
+        Uses the Hare quota, which is given as:
+        <math display="block" class="tml-display" style="display:block math;">
+          <mfrac>
+            <mtext>total votes</mtext>
+            <mtext>total seats</mtext>
+          </mfrac>
+        </math>
+      </p>
+    `,
+    active: true,
+    fn: METHODS.hareNiemeyer,
+  },
+  {
+    id: currId++,
+    name: 'Hagenbach-Bischoff',
+    desc: `
+      <p><strong>Largest remainder method (Droop quota)</strong></p>
+      <p>
+        Uses a version of the Droop quota, which is given as:
+        <math display="block" class="tml-display" style="display:block math;">
+          <mfrac>
+            <mtext>total votes</mtext>
+            <mrow>
+              <mtext>total seats</mtext>
+              <mo>+</mo>
+              <mn>1</mn>
+            </mrow>
+          </mfrac>
+        </math>
+      </p>
+    `,
+    active: true,
+    fn: METHODS.hagenbachBischoff,
+  },
+  {
+    id: currId++,
+    name: 'Imperiali',
+    desc: `
+      <p><strong>Largest remainder method (Imperiali quota)</strong></p>
+      <p>
+        Uses the Imperiali quota, which is given as:
+        <math display="block" class="tml-display" style="display:block math;">
+          <mfrac>
+            <mtext>total votes</mtext>
+            <mrow>
+              <mtext>total seats</mtext>
+              <mo>+</mo>
+              <mn>2</mn>
+            </mrow>
+          </mfrac>
+        </math>
+        <br>
+        This quota is unusual because it can allocate more seats than there
+        are. A cap is used in this implementation.
+      </p>
+    `,
+    active: true,
+    fn: METHODS.imperiali,
+  },
 ];
 
 // If only JavaScript had enums then we could use it for `t`... ughh :confounded:
