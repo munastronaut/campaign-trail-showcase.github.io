@@ -1556,7 +1556,7 @@ function generateCandidateList(cands, results, stateResults, total, ignoreEVs) {
         : `
       <li>
         <span style="color:${f.color}; background-color:${f.color}">--</span>
-          ${f.last_name}: ${ignoreEVs ? `${formatNumbers(candEVs)} / ` : ''}${candPVP}%
+          ${f.last_name}: ${!ignoreEVs ? `${formatNumbers(candEVs)} / ` : ''}${candPVP}%
       </li>
     `;
     })
