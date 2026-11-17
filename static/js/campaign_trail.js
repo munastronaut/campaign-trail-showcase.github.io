@@ -1715,7 +1715,7 @@ function electionNight(type = 'general', timestep = 10, states = []) {
           overallRes,
           e.final_state_results,
           totalVotes,
-          ignoreEVS,
+          ignoreEVs,
         );
 
         let h = Math.floor((time / 480) * 100);
