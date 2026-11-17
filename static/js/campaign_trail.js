@@ -3726,18 +3726,18 @@ function T(t) {
 
 /**
  * @template [T=Object]
- * @callback ElectoralMethod
+ * @callback AllocationMethod
  * @param {Context} ctx
  * @param {T} config
  */
 
 const METHODS = {
-  /** @type {ElectoralMethod<void>} */
+  /** @type {AllocationMethod<void>} */
   pop() {
     // This is basically a noop.
   },
 
-  /** @type {ElectoralMethod<void>} */
+  /** @type {AllocationMethod<void>} */
   wta(ctx) {
     const { stateResults, stateFieldsByPk } = ctx;
     for (const stateResult of stateResults) {
@@ -3777,15 +3777,13 @@ const RESERVED_GAME_TYPES = Object.freeze({
   STSS: 3,
 });
 
-e.default_game_type = RESERVED_GAME_TYPES.WTA;
-
 /**
  * @typedef {Object} GameType
  * @property {number} id
  * @property {string} name
  * @property {string} desc
  * @property {boolean} active
- * @property {ElectoralMethod} fn
+ * @property {AllocationMethod} fn
  * @property {Object?} config
  */
 
