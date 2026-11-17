@@ -1533,7 +1533,7 @@ function showOutcomePopup(election, results) {
   `);
 }
 
-function generateCandidateList(cands, results, stateResults, total, statesHaveEVs) {
+function generateCandidateList(cands, results, stateResults, total, ignoreEVs) {
   if (!cands || !results || total == null) return '';
 
   return cands
@@ -1556,7 +1556,7 @@ function generateCandidateList(cands, results, stateResults, total, statesHaveEV
         : `
       <li>
         <span style="color:${f.color}; background-color:${f.color}">--</span>
-          ${f.last_name}: ${statesHaveEVs ? `${formatNumbers(candEVs)} / ` : ''}${candPVP}%
+          ${f.last_name}: ${ignoreEVs ? `${formatNumbers(candEVs)} / ` : ''}${candPVP}%
       </li>
     `;
     })
@@ -1715,7 +1715,7 @@ function electionNight(type = 'general', timestep = 10, states = []) {
           overallRes,
           e.final_state_results,
           totalVotes,
-          someStatesHaveEVs,
+          ignoreEVs,
         );
 
         let h = Math.floor((time / 480) * 100);
