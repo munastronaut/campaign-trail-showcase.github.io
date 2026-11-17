@@ -3733,10 +3733,10 @@ function T(t) {
 
 // taken from 2012 - LBM, slightly modified
 function highestAverages(ctx, quotient) {
-  const { stateResults, stateFields } = ctx;
+  const { stateResults, stateFieldsByPk } = ctx;
   for (const stateResult of stateResults) {
     const { state, result } = stateResult;
-    const seats = stateFields.get(state).electoral_votes;
+    const seats = stateFieldsByPk.get(state).electoral_votes;
     if (seats <= 0) continue;
     const alloc = Array(result.length).fill(0);
     for (let s = 0; s < seats; ++s) {
@@ -3759,10 +3759,10 @@ function highestAverages(ctx, quotient) {
 }
 
 function largestRemainder(ctx, quotaCb, capped = true) {
-  const { stateResults, stateFields } = ctx;
+  const { stateResults, stateFieldsByPk } = ctx;
   for (const stateResult of stateResults) {
     const { state, result } = stateResult;
-    const seats = stateFields.get(state).electoral_votes;
+    const seats = stateFieldsByPk.get(state).electoral_votes;
     if (seats <= 0) continue;
     const votes = result.reduce((acc, res) => acc + res.votes, 0);
     if (votes <= 0) continue;
