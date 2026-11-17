@@ -32,6 +32,11 @@ const stringsEqual = (a, b) => String(a) === String(b);
 
 const getUniqueCands = () => [...new Set([e.candidate_id, ...e.opponents_list])];
 
+// Yes, the name is very misleading, but I'll come up with a better name soon.
+const isDirectElection = () =>
+  Number(e.game_type_id) === RESERVED_GAME_TYPES.POP ||
+  e.states_json.every((s) => s.fields.electoral_votes <= 0);
+
 // Call the ELECTIONS and CANDIDATES getters sparingly or when necessary as everytime they are called,
 // they have to iterate through the entire array and return a new Map. This is O(n) where n is the
 // array length.
@@ -1569,7 +1574,7 @@ function electionNight(type = 'general', timestep = 10, states = []) {
   const globalParam = PROPS.PARAMS;
   const sortedCands = getSortedCands();
   const activeStates = isGeneral ? e.states_json : states;
-  const someStatesHaveEVs = activeStates.some((f) => f.fields.electoral_votes > 0);
+  const ignoreEVs = isDirectElection();
   const stateMap = mapPkToFields(activeStates);
 
   const i = sortedCands
@@ -1584,7 +1589,7 @@ function electionNight(type = 'general', timestep = 10, states = []) {
         : `
       <li>
         <span style="color:${f.color}; background-color:${f.color}">--</span>
-        ${f.last_name}: ${someStatesHaveEVs ? '0 / ' : ''}0.0%
+        ${f.last_name}: ${!ignoreEVs ? '0 / ' : ''}0.0%
       </li>
     `;
     })
@@ -1593,7 +1598,7 @@ function electionNight(type = 'general', timestep = 10, states = []) {
   const s = PROPS.ELECTIONS.get(String(e.election_id));
   const winningEV = s.winning_electoral_vote_number;
   const formattedWinningEV = formatNumbers(winningEV);
-  const evsToWin = `${someStatesHaveEVs ? `</br>${formattedWinningEV} to win` : ''}`;
+  const evsToWin = `${!ignoreEVs ? `</br>${formattedWinningEV} to win` : ''}`;
   const footerText = isGeneral ? 'Go to Final Results' : 'Go back to questions';
 
   const removeElectionNightWindows = () =>
@@ -2478,14 +2483,14 @@ function setStatePollText(state, t) {
   const _ = formattedResults.join('');
   slrr = _;
 
-  const someStatesHaveEVs = e.states_json.some((state) => state.fields.electoral_votes > 0);
+  const ignoreEVs = isDirectElection();
 
   // $("#overall_result").html(c);
   document.getElementById('overall_result').innerHTML = `
     <h3>${(!doPrimaryMode && !e.primary) || (e.primary && !doPrimaryMode) ? 'ESTIMATED SUPPORT' : 'PRIMARY/CAUCUS RESULT'}</h3>
     <ul id='switchingEst'>${_}</ul>
     <button id='pvswitcher' onclick='switchPV()'>PV Estimate</button>
-    ${someStatesHaveEVs ? `<button onclick='evest()' id='ev_est'>${!doPrimaryMode && !e.primary ? 'Electoral Vote Estimate' : 'Current Delegate Count'}</button>` : ''}
+    ${!ignoreEVs ? `<button onclick='evest()' id='ev_est'>${!doPrimaryMode && !e.primary ? 'Electoral Vote Estimate' : 'Current Delegate Count'}</button>` : ''}
   `;
   let u = '';
   const globalParam = PROPS.PARAMS;
@@ -2571,7 +2576,7 @@ function setStatePollText(state, t) {
     <h3>STATE SUMMARY</h3>
     <p>${state.fields.name}</p>
     <ul>${u}</ul>
-    ${!state.fields.electoral_votes ? '' : `<p>${e.primary ? 'Delegates:' : 'Electoral Votes:'} ${formatNumbers(state.fields.electoral_votes)}</p>`}
+    ${!state.fields.electoral_votes || isDirectElection() ? '' : `<p>${e.primary ? 'Delegates:' : 'Electoral Votes:'} ${formatNumbers(state.fields.electoral_votes)}</p>`}
     <p>${e.primary ? onQText : `Popular Votes: ${formatNumbers(state.fields.popular_votes)}`}</p>
   `.trim();
 }
@@ -2879,7 +2884,7 @@ function mapResultColor(time) {
       const returnStr = `
         <h3>STATE RESULTS</h3>
         <p>${stateObj.fields.name}</p>
-        <p>${!stateHasEVs ? '' : `${evField} ${stateObj.fields.electoral_votes}`}
+        <p>${!stateHasEVs || isDirectElection() ? '' : `${evField} ${stateObj.fields.electoral_votes}`}
           <ul>${resultHtml}</ul>
         </p>
       `;
@@ -2959,13 +2964,13 @@ const OUTCOME = Object.freeze({
 function outcome(overallRes, winningNum) {
   const first = overallRes[0];
   const second = overallRes[1];
-  const gameType = Number(e.game_type_id);
+  const isDirect = isDirectElection();
   if (first.candidate === e.candidate_id) {
-    if (gameType === 0 && first.popular_votes > second.popular_votes) return OUTCOME.WIN;
+    if (isDirect && first.popular_votes > second.popular_votes) return OUTCOME.WIN;
     if (first.electoral_votes >= winningNum) return OUTCOME.WIN;
   }
 
-  if (gameType === 0 && first.popular_votes > second.popular_votes) return OUTCOME.LOSS;
+  if (isDirect && first.popular_votes > second.popular_votes) return OUTCOME.LOSS;
   if (first.electoral_votes >= winningNum) return OUTCOME.LOSS;
 
   return OUTCOME.TIE;
@@ -2979,15 +2984,19 @@ function overallResultsHtml() {
   const winningNum = electJson.winning_electoral_vote_number;
   let s = '';
   const out = outcome(overallResults, winningNum);
-  if (out === OUTCOME.WIN) {
-    s = candObj.electoral_victory_message;
-    e.final_outcome = 'win';
-  } else if (out === OUTCOME.LOSS) {
-    s = candObj.electoral_loss_message;
-    e.final_outcome = 'loss';
-  } else {
-    s = candObj.no_electoral_majority_message;
-    e.final_outcome = 'tie';
+  switch (out) {
+    case OUTCOME.WIN:
+      s = candObj.electoral_victory_message;
+      e.final_outcome = 'win';
+      break;
+    case OUTCOME.LOSS:
+      s = candObj.electoral_loss_message;
+      e.final_outcome = 'loss';
+      break;
+    case OUTCOME.TIE:
+      s = candObj.no_electoral_majority_message;
+      e.final_outcome = 'tie';
+      break;
   }
   const n = cands.get(String(overallResults[0].candidate));
   const l =
@@ -3024,7 +3033,7 @@ function overallResultsHtml() {
 
   const difficulty_string = `<div id='difficulty_mult'><br><b>Difficulty Multiplier:</b> ${diff_mult_string}</div><br>`;
 
-  const noElectoralVotes = e.final_overall_results.every((f) => !f.electoral_votes);
+  const ignoreEVs = isDirectElection();
 
   const r = e.final_overall_results
     .filter(Boolean)
@@ -3042,7 +3051,7 @@ function overallResultsHtml() {
           <td style="text-align: left;">
             <span style="background-color: ${colorHex}; color: ${colorHex};">----</span> ${fName}
           </td>
-          ${noElectoralVotes ? '' : `<td>${f.electoral_votes}</td>`}
+          ${ignoreEVs ? '' : `<td>${f.electoral_votes}</td>`}
           <td>${formatNumbers(f.popular_votes)}</td>
           <td>${((f.popular_votes / totalPV) * 100).toFixed(1)}%</td>
         </tr>
@@ -3075,7 +3084,7 @@ function overallResultsHtml() {
             <br>
             <tr>
               <th>Candidate</th>
-              ${noElectoralVotes ? '' : `<th>${e.primary ? 'Delegates' : 'Electoral Votes'}</th>`}
+              ${ignoreEVs ? '' : `<th>${e.primary ? 'Delegates' : 'Electoral Votes'}</th>`}
               <th>Popular Votes</th>
               <th>Popular Vote %</th>
             </tr>
@@ -3175,7 +3184,7 @@ function finalMapScreenHtml() {
   const candsArray = getSortedCands();
   const election = PROPS.ELECTIONS.get(String(e.election_id));
   const totalPopularVotes = e.final_overall_results.reduce((sum, f) => sum + f.popular_votes, 0);
-  const noElectoralVotes = e.final_overall_results.every((f) => !f.electoral_votes);
+  const ignoreEVs = isDirectElection();
   const candResultText = candsArray
     .map((f) => {
       const s = e.final_overall_results.find((g) => g.candidate === f.candidate);
@@ -3187,7 +3196,7 @@ function finalMapScreenHtml() {
         ? ''
         : `
       <li>
-        <span style="color:${f.color}; background-color: ${f.color}">--</span> ${f.last_name}: ${noElectoralVotes ? '' : `${formatNumbers(electoralVotes)} / `}${popularVotePercent}%
+        <span style="color:${f.color}; background-color: ${f.color}">--</span> ${f.last_name}: ${ignoreEVs ? '' : `${formatNumbers(electoralVotes)} / `}${popularVotePercent}%
       </li>
     `;
     })
@@ -3201,7 +3210,7 @@ function finalMapScreenHtml() {
           <div id="overall_result">
             <h3>${e.primary ? 'DELEGATES' : 'ELECTORAL VOTES'}</h3>
             <ul>${candResultText}</ul>
-            ${noElectoralVotes ? '' : `<p>${formatNumbers(election.winning_electoral_vote_number)} to win</p>`}
+            ${ignoreEVs ? '' : `<p>${formatNumbers(election.winning_electoral_vote_number)} to win</p>`}
           </div>
         </div>
         <div id="state_result_container">
@@ -3712,7 +3721,7 @@ function T(t) {
  * @typedef {Object} Context
  * @property {number[]} cands
  * @property {StateResult[]} stateResults
- * @property {Map<any, StateFields>} stateFields
+ * @property {Map<any, StateFields>} stateFieldsByPk
  */
 
 /**
@@ -3724,18 +3733,15 @@ function T(t) {
 
 const METHODS = {
   /** @type {ElectoralMethod<void>} */
-  pop(ctx) {
-    const { stateFields } = ctx;
-    for (const fields of stateFields.values()) {
-      fields.electoral_votes = 0;
-    }
+  pop() {
+    // This is basically a noop.
   },
 
   /** @type {ElectoralMethod<void>} */
   wta(ctx) {
-    const { stateResults, stateFields } = ctx;
+    const { stateResults, stateFieldsByPk } = ctx;
     for (const stateResult of stateResults) {
-      const sf = stateFields.get(stateResult.state);
+      const sf = stateFieldsByPk.get(stateResult.state);
       const res = stateResult.result;
       if (sf?.winner_take_all_flg) {
         res.forEach((g, idx) => (g.electoral_votes = idx === 0 ? sf.electoral_votes : 0));
@@ -3752,10 +3758,10 @@ const METHODS = {
   },
 
   prop(ctx) {
-    const { stateResults, stateFields } = ctx;
+    const { stateResults, stateFieldsByPk } = ctx;
     for (const stateResult of stateResults) {
       const res = stateResult.result;
-      const sf = stateFields.get(stateResult.state);
+      const sf = stateFieldsByPk.get(stateResult.state);
 
       const ratios = res.map((g) => g.percent);
       const computed = divideElectoralVotesProp(ratios, sf.electoral_votes);
@@ -3784,7 +3790,7 @@ e.default_game_type = RESERVED_GAME_TYPES.WTA;
  */
 
 // IDs in [0, 3] are reserved. That means the game assigns special meanings to them:
-//   0: Direct popular     - zeroes out all EVs
+//   0: Direct popular     - makes the game ignore EVs
 //   1: Winner-take-all    - default
 //   2: Proportional       - assigns EVs proportionally
 //   3: Sea to Shining Sea - WTA but with fancy stuff
@@ -3796,8 +3802,8 @@ e.default_game_type = RESERVED_GAME_TYPES.WTA;
 // However, you are free to change their names, descriptions, and whether they're active or not.
 /** @type {GameType[]} */
 e.game_types = [
-  // This is slightly hacky: upon every invocation of A(), the callback loops through each state
-  //   field and sets its EVs to 0.
+  // Did you know that the previous iteration of this set all EVs to 0 on
+  //   every invocation of A()?
   { id: RESERVED_GAME_TYPES.POP, name: 'Direct', desc: '', active: false, fn: METHODS.pop },
   {
     id: RESERVED_GAME_TYPES.WTA,
@@ -3868,8 +3874,67 @@ e.game_types = [
   },
 ];
 
-// If only JavaScript had enums then we could use it for `t`... ughh :confounded:
-// Also, we should modularize this function sometime! It's a bit too monolithic right now
+function calcGlobalAnsScores(ctx) {
+  const { cands, difficultyMult, playerAnswers, variance } = ctx;
+  return cands.map((candidate) => {
+    const cumulScores = playerAnswers.reduce((total, answer) => {
+      const key = `${answer}|${e.candidate_id}|${candidate}`;
+      return total + (asgIndex.get(key) || 0);
+    }, 0);
+
+    const base = candidate === e.candidate_id && cumulScores < -0.4 ? 0.6 : 1 + cumulScores;
+    const rand = 1 + randomNormal(candidate) * variance;
+
+    return {
+      candidate,
+      global_multiplier: candidate === e.candidate_id ? base * rand * difficultyMult : base * rand,
+    };
+  });
+}
+
+function calcCandsIssueScores(ctx) {
+  const { issueByCandidate, cands } = ctx;
+  return cands.map((c) => {
+    const arr = issueByCandidate.get(c) || [];
+    const v = arr.map(({ fields: f }) => ({
+      issue: f.issue,
+      issue_score: f.issue_score,
+    }));
+    return {
+      candidate_id: c,
+      issue_scores: removeIssueDuplicates(v),
+    };
+  });
+}
+
+function applyBoosts(ctx) {
+  const { cands, shiningVisitMult, asStateAgg, candsStateMults, playerAnswers, visitCountByState } =
+    ctx;
+  cands.forEach((cand, idx) => {
+    candsStateMults[idx].state_multipliers.forEach((mult) => {
+      const { state } = mult;
+
+      let w = 0;
+      for (const ans of playerAnswers) {
+        w += asStateAgg.get(`${state}|${ans}|${cand}`) || 0;
+      }
+
+      let boost = 0;
+
+      if (idx === 0) {
+        if (e.running_mate_state_id === state) {
+          boost += 0.004 * mult.state_multiplier;
+        }
+        const visits = visitCountByState.get(state) || 0;
+        if (visits > 0) {
+          boost += visits * 0.005 * Math.max(0.1, mult.state_multiplier) * shiningVisitMult;
+        }
+      }
+
+      mult.state_multiplier += w + boost;
+    });
+  });
+}
 
 /**
  * Handles state polling and election results
@@ -3877,7 +3942,7 @@ e.game_types = [
  * @param {number[]} matchup - The matchup.
  * @returns {StateResult[]} Array of results for each state
  */
-function A(t, matchup = e.matchup ?? [...new Set([e.candidate_id, ...e.opponents_list])]) {
+function A(t, matchup = e.matchup ?? getUniqueCands()) {
   const gp = PROPS.PARAMS;
   const variance = gp.global_variance;
   const candidateIssueWeight = gp.candidate_issue_weight;
@@ -3910,20 +3975,20 @@ function A(t, matchup = e.matchup ?? [...new Set([e.candidate_id, ...e.opponents
     return m;
   })();
 
-  const candsGAnsScores = matchup.map((candidate) => {
-    const cumulScores = playerAnswers.reduce((total, answer) => {
-      const key = `${answer}|${e.candidate_id}|${candidate}`;
-      return total + (asgIndex.get(key) || 0);
-    }, 0);
+  /** @type {Context} */
+  const ctx = {
+    cands: matchup,
+    variance,
+    difficultyMult,
+    shiningVisitMult,
+    playerAnswers,
+    stateFieldsByPk,
+    stateAbbrByPk,
+    visitCountByState,
+    asgIndex,
+  };
 
-    const base = candidate === e.candidate_id && cumulScores < -0.4 ? 0.6 : 1 + cumulScores;
-    const rand = 1 + randomNormal(candidate) * variance;
-
-    return {
-      candidate,
-      global_multiplier: candidate === e.candidate_id ? base * rand * difficultyMult : base * rand,
-    };
-  });
+  const candsGAnsScores = calcGlobalAnsScores(ctx);
 
   const issueByCandidate = (() => {
     const m = new Map();
@@ -3935,17 +4000,9 @@ function A(t, matchup = e.matchup ?? [...new Set([e.candidate_id, ...e.opponents
     return m;
   })();
 
-  const candsIssueScores = matchup.map((candidate) => {
-    const arr = issueByCandidate.get(candidate) || [];
-    const v = arr.map((item) => ({
-      issue: item.fields.issue,
-      issue_score: item.fields.issue_score,
-    }));
-    return {
-      candidate_id: candidate,
-      issue_scores: removeIssueDuplicates(v),
-    };
-  });
+  ctx.issueByCandidate = issueByCandidate;
+
+  const candsIssueScores = calcCandsIssueScores(ctx);
 
   // It is probably impossible for `candsIssueScores[0]` to be falsy.
 
@@ -4057,6 +4114,8 @@ function A(t, matchup = e.matchup ?? [...new Set([e.candidate_id, ...e.opponents
     return { candidate_id: candId, state_multipliers: stateMults };
   });
 
+  ctx.candsStateMults = candsStateMults;
+
   const asStateAgg = (() => {
     const m = new Map();
     for (const ans of e.answer_score_state_json || []) {
@@ -4068,30 +4127,9 @@ function A(t, matchup = e.matchup ?? [...new Set([e.candidate_id, ...e.opponents
     return m;
   })();
 
-  matchup.forEach((cand, idx) => {
-    candsStateMults[idx].state_multipliers.forEach((mult) => {
-      const { state } = mult;
+  ctx.asStateAgg = asStateAgg;
 
-      let w = 0;
-      for (const ans of playerAnswers) {
-        w += asStateAgg.get(`${state}|${ans}|${cand}`) || 0;
-      }
-
-      let boost = 0;
-
-      if (idx === 0) {
-        if (e.running_mate_state_id === state) {
-          boost += 0.004 * mult.state_multiplier;
-        }
-        const visits = visitCountByState.get(state) || 0;
-        if (visits > 0) {
-          boost += visits * 0.005 * Math.max(0.1, mult.state_multiplier) * shiningVisitMult;
-        }
-      }
-
-      mult.state_multiplier += w + boost;
-    });
-  });
+  applyBoosts(ctx);
 
   const stateIssueByState = (() => {
     const m = new Map();
@@ -4190,12 +4228,7 @@ function A(t, matchup = e.matchup ?? [...new Set([e.candidate_id, ...e.opponents
 
   debugConsole('MATCHUP: ', matchup);
 
-  /** @type {Context} */
-  const ctx = {
-    cands: matchup,
-    stateResults: calcStatePolls,
-    stateFields: stateFieldsByPk,
-  };
+  ctx.stateResults = calcStatePolls;
 
   const ty = e.game_types.find((ty) => gameType === ty.id);
   const fn = ty.fn ?? METHODS.wta;
