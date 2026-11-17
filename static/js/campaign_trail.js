@@ -4134,7 +4134,7 @@ e.game_types = [
 ];
 
 function calcGlobalAnsScores(ctx) {
-  const { cands, difficultyMult, playerAnswers, variance } = ctx;
+  const { asgIndex, cands, difficultyMult, playerAnswers, variance } = ctx;
   return cands.map((candidate) => {
     const cumulScores = playerAnswers.reduce((total, answer) => {
       const key = `${answer}|${e.candidate_id}|${candidate}`;
