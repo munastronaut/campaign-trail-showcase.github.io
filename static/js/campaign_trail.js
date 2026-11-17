@@ -3872,6 +3872,8 @@ const RESERVED_GAME_TYPES = Object.freeze({
   STSS: 3,
 });
 
+e.default_game_type = RESERVED_GAME_TYPES.WTA;
+
 /**
  * @typedef {Object} GameType
  * @property {number} id
